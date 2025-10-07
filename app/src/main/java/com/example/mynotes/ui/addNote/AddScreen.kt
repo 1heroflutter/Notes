@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.mynotes.AddTopAppBar
 import com.example.mynotes.AppViewModelProvider
+import com.example.mynotes.ui.FontSettingsViewModel
 import com.example.mynotes.ui.edit.TextInp
 import kotlinx.coroutines.launch
 
@@ -21,8 +22,8 @@ fun AddScreen(
     viewModel: AddViewModel = viewModel(factory = AppViewModelProvider.Factory),
     modifier: Modifier = Modifier,
     navigateBack: () -> Unit,
-    fontSize:TextUnit,
 ) {
+    val fontSettingsViewModel: FontSettingsViewModel = viewModel()
     val addUiState = viewModel.noteUiState
     val coroutineScope = rememberCoroutineScope()
     Scaffold(
@@ -37,7 +38,7 @@ fun AddScreen(
         ) {
 
             Column {
-                TextInp(modifier = Modifier.fillMaxWidth(),
+                TextInp(
                     noteUiState = addUiState,
                     onValueChange = viewModel::updateUiState,
                     onSave = {
@@ -46,7 +47,7 @@ fun AddScreen(
                             navigateBack()
                         }
                     },
-                    fontSize = fontSize
+                    fontSize = fontSettingsViewModel.fontSize
                 )
             }
         }

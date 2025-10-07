@@ -9,7 +9,7 @@ data class NoteUiState (
 )
 data class NoteDetails(
     val id: Int = 0,
-    val title: String = "",
+    var title: String = "",
     var context: String = "",
     val day: String = "",
     val status: Int = 0,

@@ -1,5 +1,6 @@
 package com.example.mynotes.ui.home
 
+import android.util.Log
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.MutableState
@@ -34,15 +35,10 @@ class HomeViewModel(private val notesRepository: NotesRepository) : ViewModel() 
     private val _homeUiState = MutableStateFlow(HomeUiState())
     val homeUiState: StateFlow<HomeUiState> get() = _homeUiState
 
-    companion object {
-        private const val TIMEOUT_MILLIS = 5_000L
-    }
-
-
     private val _listSelectedNotes = mutableStateListOf<Int>()
     val listSelectedNotes: List<Int> get() = _listSelectedNotes
     var isFavTop by mutableStateOf(false)
-
+    var isSelectedAll by mutableStateOf(false)
     init {
         viewModelScope.launch {
             _currentNotesStream.collectLatest { streamType ->
@@ -71,13 +67,19 @@ class HomeViewModel(private val notesRepository: NotesRepository) : ViewModel() 
             _listSelectedNotes.add(noteId)
         }
     }
-    fun selectedAllNotes(){
-        _homeUiState.value.noteList.value.forEach{note: Note ->
-            if(!_listSelectedNotes.contains(note.id)){
-                _listSelectedNotes.add(note.id)
+    fun selectedAllNotes() {
+        if (isSelectedAll) {
+            _homeUiState.value.noteList.value.forEach { note ->
+                if (!_listSelectedNotes.contains(note.id)) {
+                    _listSelectedNotes.add(note.id)
+                }
             }
+        } else {
+            _listSelectedNotes.clear()
         }
     }
+
+
     fun toggleFavTop() {
         isFavTop = !isFavTop
         updateSortedNotes()
@@ -98,8 +100,18 @@ class HomeViewModel(private val notesRepository: NotesRepository) : ViewModel() 
             _listSelectedNotes.clear()
         }
     }
-    suspend fun dataSync(){
-        notesRepository.dataSync()
+    suspend fun dataSync(): Result<Unit> {
+        return try {
+            withContext(Dispatchers.IO) {
+                Log.d("Repository", "Bắt đầu đồng bộ...")
+                notesRepository.dataSync()
+            }
+            Log.d("Repository", "Đồng bộ xong không lỗi")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("Repository", "Lỗi khi đồng bộ", e)
+            Result.failure(e)
+        }
     }
 
 }

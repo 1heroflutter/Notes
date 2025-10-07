@@ -1,12 +1,10 @@
 package com.example.mynotes.ui.draw
 
-import android.content.Context
-import android.graphics.Bitmap
 import android.widget.Toast
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,16 +40,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.mynotes.AppViewModelProvider
+import com.example.mynotes.R
 import kotlinx.coroutines.launch
-
+@RequiresApi(35)
 @Composable
 fun DrawingScreen(
     viewModel: DrawingViewModel = viewModel(factory = AppViewModelProvider.Factory),
@@ -61,11 +62,11 @@ fun DrawingScreen(
     val scope = rememberCoroutineScope()
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     val saveStatus by viewModel.saveStatus.collectAsState()
+    val capturedBitmap = remember { mutableStateOf<ImageBitmap?>(null) }
     val context = LocalContext.current
 
     LaunchedEffect(drawingId) {
         if (drawingId != null) {
-
             viewModel.loadDrawing(drawingId)
         } else {
             viewModel.clearDrawing()
@@ -88,55 +89,72 @@ fun DrawingScreen(
             IconButton(onClick = navigateBack) {
                 Icon(Icons.Default.ArrowBack, "Back")
             }
-            Text("Bảng vẽ", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary, fontSize = 30.sp)
-            Row {
-                IconButton(onClick = { viewModel.clearDrawing() }) {
-                    Icon(Icons.Default.Delete, "Clear Drawing")
-                }
-                IconButton(
-                    onClick = {
-                        scope.launch {
-                            val bitmap = viewModel.getDrawingAsBitmap(
-                                canvasSize.width,
-                                canvasSize.height
+            Text("Bảng vẽ", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary, fontSize = 30.sp, modifier = Modifier.weight(1f))
+            IconButton(onClick = { viewModel.undoLastStroke() }, modifier = Modifier.size(22.dp).weight(0.3f)) {
+                Icon(painter = painterResource(R.drawable.undo), contentDescription = "Undo")
+            }
+            IconButton(onClick = { viewModel.toggleEraserMode() }, modifier = Modifier.size(22.dp).weight(0.3f)) {
+                val isErasing by viewModel.isErasing.collectAsState()
+                Icon(
+                    painter = if (isErasing) painterResource(R.drawable.edit) else painterResource(R.drawable.eraser),
+                    contentDescription = "Eraser Toggle",
+                    tint = if (isErasing) MaterialTheme.colorScheme.onPrimary else Color.Unspecified
+                )
+            }
+            IconButton(onClick = { viewModel.clearDrawing() }) {
+                Icon(Icons.Default.Delete, "Clear Drawing")
+            }
+            IconButton(
+                onClick = {
+                    scope.launch {
+                        capturedBitmap.value?.let { bitmap ->
+                            viewModel.saveCanvasAsBitmap(
+                                context = context,
+                                canvasWidth = canvasSize.width,
+                                canvasHeight = canvasSize.height,
+                                originalDrawingId = drawingId,
+                                onSaved = { path ->
+                                    Toast.makeText(context, "Đã lưu: $path", Toast.LENGTH_SHORT).show()
+                                    navigateBack()
+                                },
+                                onError = { error ->
+                                    Toast.makeText(context, "Lỗi: $error", Toast.LENGTH_SHORT).show()
+                                }
                             )
-                            viewModel.saveDrawing( bitmap = bitmap)
+
                         }
                     }
-                ) {
-                    Icon(Icons.Default.Add, "Save Drawing")
                 }
+            ) {
+                Icon(painter = painterResource(R.drawable.save), "Save Drawing", modifier = Modifier.size(22.dp))
             }
         }
+
         LaunchedEffect(saveStatus) {
-            when(saveStatus){
-                is DrawingViewModel.SaveStatus.Success->{
-                        Toast.makeText(context,"Lưu file thành công!", Toast.LENGTH_SHORT).show()
+            when (saveStatus) {
+                is DrawingViewModel.SaveStatus.Success -> {
+                    Toast.makeText(context, "Lưu file thành công!", Toast.LENGTH_SHORT).show()
                 }
-                is DrawingViewModel.SaveStatus.Error->{
-                        Toast.makeText(context,"Lỗi lưu file!", Toast.LENGTH_SHORT).show()
+                is DrawingViewModel.SaveStatus.Error -> {
+                    Toast.makeText(context, "Lỗi lưu file!", Toast.LENGTH_SHORT).show()
                 }
-                else->{
-
-                }
+                else -> {}
             }
         }
 
-        // Drawing canvas
         DrawingCanvas(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .onSizeChanged { size ->
-                    canvasSize = size
-                },
-            viewModel = viewModel
+                .onSizeChanged { size -> canvasSize = size },
+            viewModel = viewModel,
+            onCapture = { bitmap -> capturedBitmap.value = bitmap }
         )
 
-        // Color picker and stroke width controls
         DrawingControls(viewModel)
     }
 }
+
 
 @Composable
 fun DrawingControls(viewModel: DrawingViewModel) {
@@ -147,6 +165,7 @@ fun DrawingControls(viewModel: DrawingViewModel) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(8.dp)
+
     ) {
         // Color selection
         Row(
@@ -177,11 +196,11 @@ fun DrawingControls(viewModel: DrawingViewModel) {
         Spacer(modifier = Modifier.height(8.dp))
 
         // Stroke width slider
-        Text("Stroke Width: ${strokeWidth.toInt()}")
+        Text("Nét: ${strokeWidth.toInt()}")
         Slider(
             value = strokeWidth,
             onValueChange = { viewModel.setStrokeWidth(it) },
-            valueRange = 1f..30f
+            valueRange = 1f..50f
         )
     }
 }

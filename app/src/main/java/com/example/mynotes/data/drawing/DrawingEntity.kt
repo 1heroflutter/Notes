@@ -11,5 +11,4 @@ data class DrawingEntity(
     val filePath: String,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
-    val userUID: String = "" // Optional: for user association
 )

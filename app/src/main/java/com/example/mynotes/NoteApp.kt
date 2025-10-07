@@ -1,6 +1,8 @@
 package com.example.mynotes
 
 import android.util.Log
+import android.widget.Toast
+import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -32,7 +34,6 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -60,7 +61,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -75,14 +75,18 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import com.example.mynotes.data.NoteDetails
 import com.example.mynotes.data.NoteUiState
+import com.example.mynotes.ui.FontSettingsViewModel
 import com.example.mynotes.ui.edit.EditViewModel
 import com.example.mynotes.ui.home.HomeUiState
 import com.example.mynotes.ui.home.HomeViewModel
 import com.example.mynotes.ui.navigation.NoteNavHost
 import com.facebook.CallbackManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
+@RequiresApi(35)
 @Composable
 fun NoteApp(
     activity: AppCompatActivity,
@@ -128,7 +132,6 @@ fun HomeBar(currentSteam: StateFlow<Int>, quantity: Int, scrollBehavior: TopAppB
 
 }
 
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ToolsBar(
@@ -136,19 +139,19 @@ fun ToolsBar(
     viewModel: HomeViewModel,
     navigateToSearch: () -> Unit,
     auth: AuthManager,
-    dataSyn: () -> Unit,
     openDrawer: () -> Unit,
-    navigateToDrawing: () -> Unit,
     navigateToFileReader:()->Unit
 ) {
     var isLogin by remember { mutableStateOf(auth.isUserLoggedIn()) }
     val onSelected by remember { mutableStateOf(viewModel.listSelectedNotes) }
-
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     LaunchedEffect(Unit) {
         auth.authState.collect { loggedIn ->
             isLogin = loggedIn
         }
     }
+
     var expandState by rememberSaveable { mutableStateOf(false) }
     var expandedViewStates by remember { mutableStateOf(false) }
     val listOfWidthVal = listOf(
@@ -174,14 +177,40 @@ fun ToolsBar(
                         Icon(imageVector = Icons.Default.Search, contentDescription = "")
                     }
 
-                    IconButton(onClick = { navigateToDrawing() }, Modifier.size(22.dp)) {
+                    IconButton(onClick = { navigateToFileReader() }, Modifier.size(22.dp)) {
                         Icon(painter = painterResource(R.drawable.drawing), contentDescription = "")
                     }
                     Spacer(Modifier.weight(0.1f))
 
-                    IconButton(onClick = { dataSyn() }, Modifier.size(24.dp), enabled = isLogin) {
+                    IconButton(
+                        onClick = {
+                            coroutineScope.launch {
+                                val result = viewModel.dataSync()
+                                withContext(Dispatchers.Main) {
+                                    if (result.isSuccess) {
+                                        Log.d("ToolsBar", "Data sync result: $result")
+                                        Toast.makeText(
+                                            context,
+                                            "Sao lưu thành công!",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    } else {
+                                        Log.e("ToolsBar", "Error: ${result.exceptionOrNull()?.message}")
+                                        Toast.makeText(
+                                            context,
+                                            "Lỗi khi sao lưu: ${result.exceptionOrNull()?.message}",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    }
+                                }
+                            }
+                        },
+                        Modifier.size(24.dp),
+                        enabled = isLogin
+                    ) {
                         Icon(painter = painterResource(R.drawable.cloud), contentDescription = "")
                     }
+
 
                     Box(contentAlignment = Alignment.Center) {
                         IconButton(onClick = { expandState = true }) {
@@ -189,7 +218,7 @@ fun ToolsBar(
                         }
                         DropdownMenu(
                             expanded = expandState,
-                            shape = RoundedCornerShape(36),
+                            shape = RoundedCornerShape(16),
                             onDismissRequest = { expandState = false }) {
                             DropdownMenuItem(text = {
                                 Text(if (viewModel.isFavTop) "Bỏ ghim mục yêu thích" else "Ghim mục yêu thích lên đầu")
@@ -203,18 +232,6 @@ fun ToolsBar(
                                     expandedViewStates = true
                                     expandState = false
                                 })
-                            DropdownMenuItem(
-                                onClick = {
-                                    navigateToFileReader()
-                                    expandState = false
-                                },
-                                text = {
-                                    Text(
-                                        "Đọc File",
-                                        color = MaterialTheme.colorScheme.onPrimary
-                                    )
-                                }
-                            )
                         }
                         DropdownMenu(
                             expanded = expandedViewStates,
@@ -256,14 +273,24 @@ fun ToolsBar(
         ),
     )
 }
-
 @Composable
 fun SelectedNoteBar(viewModel: HomeViewModel) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(0.dp)) {
+    val scope = rememberCoroutineScope()
+    val allNotes = viewModel.homeUiState.collectAsState().value.noteList.value
+    val selectedNotes = viewModel.listSelectedNotes
+    val isAllSelected = selectedNotes.size == allNotes.size && allNotes.isNotEmpty()
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(0.dp)
+    ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             RadioButton(
-                selected = false,
-                onClick = ({ viewModel.selectedAllNotes() }),
+                selected = isAllSelected,
+                onClick = {
+                    viewModel.isSelectedAll = !isAllSelected
+                    viewModel.selectedAllNotes()
+                },
                 colors = RadioButtonDefaults.colors(colorResource(id = R.color.radioBtn)),
                 modifier = Modifier
                     .size(20.dp)
@@ -271,15 +298,24 @@ fun SelectedNoteBar(viewModel: HomeViewModel) {
             )
             Text("Tất cả", color = MaterialTheme.colorScheme.onPrimary, fontSize = 12.sp)
         }
+
         Text(
-            "Đã chọn ${viewModel.listSelectedNotes.count()}",
+            "Đã chọn ${selectedNotes.count()}",
             color = MaterialTheme.colorScheme.onPrimary,
             fontSize = 20.sp,
             modifier = Modifier.padding(start = 12.dp)
         )
+
         Spacer(Modifier.weight(1f))
+
+        IconButton(onClick = {
+            scope.launch { viewModel.delSelectedNotes() }
+        }) {
+            Icon(imageVector = Icons.Default.Delete, contentDescription = "")
+        }
     }
 }
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -376,7 +412,6 @@ fun SortBar(
     )
 }
 
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddTopAppBar(
@@ -401,7 +436,7 @@ fun AddTopAppBar(
                         color = MaterialTheme.colorScheme.onPrimary,
                         fontWeight = FontWeight.Bold
                     ),
-                    placeholder = { Text("Nhập tiêu đề", fontSize = 20.sp) },
+                    placeholder = { Text("Nhập tiêu đề", fontSize = 24.sp) },
 
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Color.Transparent,
@@ -439,6 +474,7 @@ fun EditTopAppBar(
     navigateToCover: (Int) -> Unit,
     onSaveAsPdfFile: () -> Unit,
     onSaveAsWordFile: () -> Unit,
+    fontViewModel: FontSettingsViewModel
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -492,12 +528,16 @@ fun EditTopAppBar(
                         DropDownItem(
                             icon = Icons.Default.Notifications,
                             text = "Tạo nhắc nhở",
-                            onItemClick = { onShowReminderDialogChange(true) }
+                            onItemClick = {
+                                dropdownMenuState = false
+                                onShowReminderDialogChange(true) }
                         )
                         DropDownItem(
                             icon = Icons.Default.Star,
                             text = if (viewModel.isFavourite == 1) "Xóa khỏi mục ưa thích" else "Thêm vào mục ưa thích",
-                            onItemClick = { onFavourite() }
+                            onItemClick = {
+
+                                onFavourite() }
                         )
                         DropDownItem(
                             icon = Icons.Default.Face,
@@ -542,25 +582,27 @@ fun EditTopAppBar(
                             text = "Xóa",
                             onItemClick = { onDelete() }
                         )
-                        HorizontalDivider(modifier = Modifier.background(color = MaterialTheme.colorScheme.onPrimary))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            IconButton(
-                                onClick = {
-                                    dropdownFontSizeSelect = true
-                                    dropdownMenuState = false
-                                },
-                                modifier = Modifier.size(24.dp)
-                            ) {
+                        DropdownMenuItem(
+                            leadingIcon = {
                                 Icon(
                                     painter = painterResource(id = R.drawable.font_size),
-                                    contentDescription = ""
+                                    contentDescription = "",
+                                    modifier = Modifier.size(24.dp),
+                                    tint = MaterialTheme.colorScheme.onPrimary
                                 )
+                            },
+                            text = {
+                                Text(
+                                    text = "Cỡ chữ",
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            },
+                            onClick = {
+                                dropdownFontSizeSelect = true
+                                dropdownMenuState = false
                             }
-                        }
+                        )
+
 
                     }
                 }
@@ -570,7 +612,7 @@ fun EditTopAppBar(
                         expanded = dropdownMenuFileState,
                         shape = RoundedCornerShape(22),
                         onDismissRequest = {
-                            dropdownMenuState = false
+                            dropdownMenuFileState = false
                         },
                     ) {
                         DropdownMenuItem(
@@ -690,7 +732,7 @@ fun EditTopAppBar(
                                 )
                             },
                             onClick = {
-                                viewModel.fontSize = 16.sp
+                                fontViewModel.updateFontSize(16.sp)
                                 dropdownFontSizeSelect = false
                             }
                         )
@@ -702,7 +744,7 @@ fun EditTopAppBar(
                                 )
                             },
                             onClick = {
-                                viewModel.fontSize = 20.sp
+                                fontViewModel.updateFontSize(20.sp)
                                 dropdownFontSizeSelect = false
                             }
                         )
@@ -714,7 +756,7 @@ fun EditTopAppBar(
                                 )
                             },
                             onClick = {
-                                viewModel.fontSize = 30.sp
+                                fontViewModel.updateFontSize(30.sp)
                                 dropdownFontSizeSelect = false
                             }
                         )
@@ -765,7 +807,7 @@ fun ExpandTopAppBar(scrollBehavior: TopAppBarScrollBehavior) {
                 fontWeight = FontWeight.Bold
             )
         },
-        expandedHeight = 300.dp,
+        expandedHeight = 220.dp,
         scrollBehavior = scrollBehavior,
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = MaterialTheme.colorScheme.background,
@@ -821,7 +863,7 @@ fun SearchTopAppBar(
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = MaterialTheme.colorScheme.background,
             scrolledContainerColor = MaterialTheme.colorScheme.background
-        )
+        ),
     )
 }
 

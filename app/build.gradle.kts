@@ -105,4 +105,8 @@ dependencies {
     //Pdf
     implementation("io.coil-kt:coil-compose:2.4.0")
     implementation(libs.facebook.android.sdk)
+
+    //Json
+    implementation("com.google.code.gson:gson:2.11.0")
+
 }

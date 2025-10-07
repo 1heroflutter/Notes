@@ -3,6 +3,7 @@ package com.example.mynotes.ui.fileReader
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,8 +17,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.rememberAsyncImagePainter
@@ -40,7 +43,6 @@ fun FileReaderScreen(
     val loadedBitmap by viewModel.loadedBitmap.collectAsState()
     val context = LocalContext.current
 
-    // Handle load status
     LaunchedEffect(loadStatus) {
         when (loadStatus) {
             is FileReaderViewModel.LoadStatus.Success -> {
@@ -60,30 +62,38 @@ fun FileReaderScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(start = 16.dp, end = 16.dp)
     ) {
         // Top bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(WindowInsets.systemBars.asPaddingValues() ),
+                .padding(WindowInsets.systemBars.asPaddingValues()),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            IconButton(onClick = navigateBack) {
+            val isSelectionMode by viewModel.isInSelectionMode.collectAsState()
+
+            IconButton(onClick = {
+                if (isSelectionMode) viewModel.clearSelectionMode() else navigateBack()
+            }) {
                 Icon(Icons.Default.ArrowBack, contentDescription = "")
             }
 
             Text(
-                text = "Danh sách của bạn",
+                text = if (isSelectionMode) "Đã chọn" else "Danh sách đã lưu",
+                fontWeight = FontWeight.Bold,
                 style = MaterialTheme.typography.headlineMedium
             )
 
-            // Empty box to balance layout
-            Box(modifier = Modifier.size(48.dp))
+            if (isSelectionMode) {
+                IconButton(onClick = { viewModel.deleteSelectedDrawings() }) {
+                    Icon(Icons.Default.Delete, contentDescription = "Delete Selected")
+                }
+            } else {
+                Box(modifier = Modifier.size(48.dp))
+            }
         }
-
-        // Show drawing preview or drawing list
         if (selectedDrawing != null && loadedBitmap != null) {
             // Drawing details and preview
             Column(
@@ -197,9 +207,18 @@ fun FileReaderScreen(
                     // List of saved drawings
                     LazyColumn {
                         items(drawings) { drawing ->
+                            val isSelectionMode by viewModel.isInSelectionMode.collectAsState()
+                            val selectedIds by viewModel.selectedIds.collectAsState()
+
                             DrawingItem(
                                 drawing = drawing,
-                                onClick = { viewModel.loadDrawingById(drawing.id.toLong()) }
+                                onClick = {
+                                    if (isSelectionMode) viewModel.toggleSelection(drawing.id.toLong())
+                                    else viewModel.loadDrawingById(drawing.id.toLong())
+                                },
+                                onLongPress = { viewModel.startSelection(drawing.id.toLong()) },
+                                isSelected = selectedIds.contains(drawing.id.toLong()),
+                                isSelectionMode = isSelectionMode
                             )
                         }
                     }
@@ -208,17 +227,27 @@ fun FileReaderScreen(
         }
     }
 }
-
 @Composable
 fun DrawingItem(
     drawing: DrawingEntity,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongPress: () -> Unit,
+    isSelected: Boolean,
+    isSelectionMode: Boolean
 ) {
+    val interactionModifier = Modifier
+        .pointerInput(Unit) {
+            detectTapGestures(
+                onLongPress = { onLongPress() },
+                onTap = { onClick() }
+            )
+        }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp)
-            .clickable(onClick = onClick),
+            .then(interactionModifier),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Row(
@@ -227,7 +256,14 @@ fun DrawingItem(
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Thumbnail
+            if (isSelectionMode) {
+                RadioButton(
+                    selected = isSelected,
+                    onClick = { onClick() }
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+            }
+
             Image(
                 painter = rememberAsyncImagePainter(
                     model = ImageRequest.Builder(LocalContext.current)
@@ -244,7 +280,6 @@ fun DrawingItem(
 
             Spacer(modifier = Modifier.width(16.dp))
 
-            // Drawing details
             Column {
                 Text(
                     text = drawing.title,
@@ -263,7 +298,6 @@ fun DrawingItem(
     }
 }
 
-// Helper function to format date
 private fun formatDate(timestamp: Long): String {
     val dateFormat = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault())
     return dateFormat.format(Date(timestamp))

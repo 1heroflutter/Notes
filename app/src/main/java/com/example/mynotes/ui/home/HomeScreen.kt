@@ -1,9 +1,6 @@
 package com.example.mynotes.ui.home
 
-
-import android.content.Context
 import android.content.pm.PackageManager
-import android.net.NetworkCapabilities
 import android.os.Build
 import android.util.Log
 import android.widget.Toast
@@ -37,7 +34,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
@@ -49,7 +45,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
@@ -95,28 +90,20 @@ import com.example.mynotes.data.BiometricPromptManager
 import com.example.mynotes.data.BiometricResult
 import com.example.mynotes.data.Note
 import kotlinx.coroutines.launch
-import android.net.ConnectivityManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material3.FloatingActionButtonDefaults
-import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.State
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.key
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.snapshotFlow
 import com.example.mynotes.NetworkUtils
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -129,8 +116,8 @@ fun HomeScreen(
     navigateToSearch: () -> Unit,
     logout: () -> Unit,
     login: () -> Unit,
-    navigateToDrawing: () -> Unit,
-    navigateToFileReader:()->Unit
+    navigateToFileReader:()->Unit,
+    navigateToChangePassword:()->Unit
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val scrollSortBar = TopAppBarDefaults.enterAlwaysScrollBehavior()
@@ -138,8 +125,6 @@ fun HomeScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val gridState = rememberLazyGridState()
-
-    // Optimize scroll button visibility logic using derivedStateOf
     val showGoTopBtn by remember {
         derivedStateOf {
             gridState.firstVisibleItemIndex > 0
@@ -155,7 +140,8 @@ fun HomeScreen(
                 activity,
                 logout,
                 login,
-                viewModel
+                viewModel,
+                navigateToChangePassword
             ) { scope.launch { drawerState.close() } }
         }
     ) {
@@ -172,15 +158,7 @@ fun HomeScreen(
                         viewModel,
                         navigateToSearch,
                         auth = AuthManager,
-                        dataSyn = {
-                            scope.launch {
-                                viewModel.dataSync()
-                                Toast.makeText(activity, "Sao lưu thành công!", Toast.LENGTH_SHORT)
-                                    .show()
-                            }
-                        },
                         openDrawer = { scope.launch { drawerState.open() } },
-                        navigateToDrawing = {navigateToDrawing()},
                         navigateToFileReader = {navigateToFileReader()}
                     )
                     SortBar(homeUiState, viewModel, scrollSortBar)
@@ -238,25 +216,6 @@ fun HomeScreen(
                         }
                     }
 
-                    // Show delete button when items are selected
-                    val isSelected = viewModel.listSelectedNotes
-                    if (isSelected.isNotEmpty()) {
-                        IconButton(
-                            onClick = {
-                                scope.launch {
-                                    viewModel.delSelectedNotes()
-                                }
-                            },
-                            Modifier.align(Alignment.BottomCenter)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Delete,
-                                tint = Color.Red,
-                                contentDescription = "Delete notes",
-                                modifier = Modifier.size(100.dp)
-                            )
-                        }
-                    }
                 }
             }
         }
@@ -272,7 +231,9 @@ fun ListGridNote(
     gridState: LazyGridState
 ) {
     Box(
-        modifier = Modifier.background(MaterialTheme.colorScheme.background).fillMaxSize(),
+        modifier = Modifier
+            .background(MaterialTheme.colorScheme.background)
+            .fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
         val noteList = uiState.noteList.value
@@ -321,6 +282,7 @@ fun ListGridNote(
         }
     }
 }
+
 @Composable
 fun NotesCard(
     viewModel: HomeViewModel,
@@ -329,6 +291,8 @@ fun NotesCard(
     modifier: Modifier
 ) {
     val isSelected = viewModel.listSelectedNotes.contains(note.id)
+    val isSelectedMode = viewModel.listSelectedNotes.isNotEmpty()
+    val homeUiState by viewModel.homeUiState.collectAsState()
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.Center,
@@ -340,14 +304,24 @@ fun NotesCard(
                 .weight(2f)
                 .pointerInput(Unit) {
                     detectTapGestures(
-                        onLongPress = { viewModel.toggleSelection(note.id) },
-                        onTap = { onItemClick(note.id) }
+                        onLongPress = {
+                            if (!isSelectedMode) {
+                                viewModel.toggleSelection(note.id)
+                            }
+                        },
+                        onTap = {
+                            if (viewModel.listSelectedNotes.isNotEmpty()) {
+                                viewModel.toggleSelection(note.id)
+                            } else {
+                                onItemClick(note.id)
+                            }
+                        }
                     )
                 },
-            colors = if (note.coverOn) CardDefaults.cardColors(MaterialTheme.colorScheme.background) else CardDefaults.cardColors(
+            colors = if (note.coverOn && homeUiState.colWidth.value != 200.dp ) CardDefaults.cardColors(MaterialTheme.colorScheme.background) else CardDefaults.cardColors(
                 MaterialTheme.colorScheme.secondaryContainer
             ),
-            elevation = if (note.coverOn) CardDefaults.cardElevation(defaultElevation = 0.dp) else CardDefaults.cardElevation(
+            elevation = if (note.coverOn&& homeUiState.colWidth.value != 200.dp) CardDefaults.cardElevation(defaultElevation = 0.dp) else CardDefaults.cardElevation(
                 defaultElevation = 6.dp
             ),
 
@@ -359,7 +333,7 @@ fun NotesCard(
                 Modifier
                     .fillMaxSize()
             ) {
-                if (note.coverOn && note.cover.isNotEmpty()) {
+                if (note.coverOn && note.cover.isNotEmpty() && homeUiState.colWidth.value != 200.dp) {
                     Image(
                         painter = painterResource(id = coverResId),
                         contentDescription = "Cover Image",
@@ -371,7 +345,8 @@ fun NotesCard(
                     Text(
                         note.context,
                         Modifier.padding(8.dp),
-                        maxLines = 7
+                        maxLines = 9,
+                        color = MaterialTheme.colorScheme.onPrimary
                     )
                 }
 
@@ -410,18 +385,30 @@ fun NotesCard(
     }
 
 }
-
 @Composable
 fun MenuNavDrawer(
     activity: AppCompatActivity,
     logout: () -> Unit,
     login: () -> Unit,
     viewModel: HomeViewModel,
+    navigateToChangePassword: () -> Unit,
     closeDrawer: () -> Unit
 ) {
     val promptManager by lazy { BiometricPromptManager(activity) }
     val biometricResult by promptManager.promResults.collectAsState(initial = null)
     var isLoggedIn by remember { mutableStateOf(AuthManager.isUserLoggedIn()) }
+    val isEmailPasswordUser = remember { mutableStateOf(AuthManager.isEmailPasswordUser()) }
+
+    val currentContext = LocalContext.current
+    var isNetworkAvailable by rememberSaveable {
+        mutableStateOf(NetworkUtils.isNetworkAvailable(context = currentContext))
+    }
+    LaunchedEffect(Unit) {
+        NetworkUtils.isNetworkAvailableFlow(currentContext).collect { isConnected ->
+            isNetworkAvailable = isConnected
+        }
+    }
+
     Box(
         modifier = Modifier
             .padding(WindowInsets.systemBars.asPaddingValues())
@@ -434,91 +421,80 @@ fun MenuNavDrawer(
             modifier = Modifier
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Top
         ) {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(24.dp))
+
+            // Phần Avatar, User Info
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Image(
+                    painter = painterResource(id = R.drawable.ic_user),
+                    contentDescription = "User Avatar",
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = AuthManager.getUserEmail(),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            // Các Menu Gốc
             Text(
                 "Menu",
                 modifier = Modifier.padding(16.dp),
-                style = MaterialTheme.typography.titleLarge
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.primary
             )
+
             MenuItem(
                 text = "Tất cả ghi chú",
-                icon =
-                Icons.Default.Home,
+                icon = Icons.Default.Home,
                 onClick = {
                     viewModel.updateStream(0)
                     closeDrawer()
-                },
+                }
             )
             MenuItem(
                 text = "Yêu thích",
-                icon =
-                Icons.Default.Star,
+                icon = Icons.Default.Star,
                 onClick = {
                     viewModel.updateStream(1)
                     closeDrawer()
-                },
+                }
             )
             MenuItem(
                 text = "Bảo mật",
-                icon =
-                Icons.Default.Lock,
+                icon = Icons.Default.Lock,
                 onClick = {
                     promptManager.showBiometricPrompt(
                         title = "Xác thực danh tính",
                         description = ""
                     )
-                },
-            )
-
-            LaunchedEffect(biometricResult) {
-                if (biometricResult is BiometricResult.AuthenticationSuccess) {
-                    viewModel.updateStream(-1)
-                    closeDrawer()
-                } else if (biometricResult is BiometricResult.AuthenticationError ||
-                    biometricResult is BiometricResult.AuthenticationFailed
-                ) {
-                    Toast.makeText(
-                        activity,
-                        "Xác thực thất bại, Vui lòng thử lại.",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                } else if (biometricResult is BiometricResult.AuthenticationNotSet) {
-                    Toast.makeText(
-                        activity,
-                        "Bạn chưa thiết lập xác thực sinh trắc học.",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                } else if (biometricResult is BiometricResult.FeatureUnavailable) {
-                    Toast.makeText(
-                        activity,
-                        "Thiết bị của bạn không hỗ trợ sinh trắc học.",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                } else if (biometricResult is BiometricResult.HardwareUnavailable) {
-                    Toast.makeText(
-                        activity,
-                        "Cảm biến sinh trắc học không khả dụng.",
-                        Toast.LENGTH_SHORT
-                    ).show()
                 }
-            }
-
-            HorizontalDivider()
-            val currentContext = LocalContext.current
-            var isNetworkAvailable by rememberSaveable {
-                mutableStateOf(
-                    NetworkUtils.isNetworkAvailable(
-                        context = currentContext
-                    )
+            )
+            if (isEmailPasswordUser.value && isLoggedIn) {
+                MenuItem(
+                    text = "Đổi mật khẩu",
+                    icon = Icons.Default.Person,
+                    onClick = {
+                        closeDrawer()
+                        navigateToChangePassword()
+                    }
                 )
             }
-            LaunchedEffect(Unit) {
-                NetworkUtils.isNetworkAvailableFlow(currentContext).collect { isConnected ->
-                    isNetworkAvailable = isConnected
-                }
-            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
             if (isNetworkAvailable) {
                 MenuItem(
                     text = if (isLoggedIn) "Đăng xuất" else "Đăng nhập",
@@ -534,8 +510,30 @@ fun MenuNavDrawer(
                     }
                 )
             }
+        }
+    }
 
-
+    // Xử lý kết quả sinh trắc học
+    LaunchedEffect(biometricResult) {
+        when (biometricResult) {
+            is BiometricResult.AuthenticationSuccess -> {
+                viewModel.updateStream(-1)
+                closeDrawer()
+            }
+            is BiometricResult.AuthenticationError,
+            is BiometricResult.AuthenticationFailed -> {
+                Toast.makeText(activity, "Xác thực thất bại, vui lòng thử lại.", Toast.LENGTH_SHORT).show()
+            }
+            is BiometricResult.AuthenticationNotSet -> {
+                Toast.makeText(activity, "Bạn chưa thiết lập xác thực sinh trắc học.", Toast.LENGTH_SHORT).show()
+            }
+            is BiometricResult.FeatureUnavailable -> {
+                Toast.makeText(activity, "Thiết bị không hỗ trợ sinh trắc học.", Toast.LENGTH_SHORT).show()
+            }
+            is BiometricResult.HardwareUnavailable -> {
+                Toast.makeText(activity, "Cảm biến sinh trắc học không khả dụng.", Toast.LENGTH_SHORT).show()
+            }
+            else -> {}
         }
     }
 }
@@ -543,17 +541,21 @@ fun MenuNavDrawer(
 @Composable
 fun MenuItem(text: String, icon: ImageVector, onClick: () -> Unit) {
     NavigationDrawerItem(
-        label = { Text(text, color = MaterialTheme.colorScheme.onPrimary) },
+        label = { Text(text, color = MaterialTheme.colorScheme.onSurface) },
         icon = {
             Icon(
-                imageVector = icon, contentDescription = "",
-                Modifier.size(28.dp)
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(28.dp),
+                tint = MaterialTheme.colorScheme.primary
             )
         },
+        selected = false,
         onClick = onClick,
-        selected = false
+        modifier = Modifier.padding(vertical = 4.dp)
     )
 }
+
 
 @Composable
 fun RequestNotificationPermission() {

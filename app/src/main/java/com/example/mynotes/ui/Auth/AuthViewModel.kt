@@ -91,11 +91,12 @@ class AuthViewModel :ViewModel() {
                 }
             }
     }
-    fun register(email: String, passWord: String){
+    fun register(email: String, passWord: String, onSuccess: () -> Unit = {}) {
         auth.createUserWithEmailAndPassword(email, passWord)
-            .addOnCompleteListener{task->
+            .addOnCompleteListener { task ->
                 if (task.isSuccessful) {
                     _errorMessage.value = "Đăng ký thành công"
+                    onSuccess()
                 } else {
                     val exception = task.exception
                     if (exception is FirebaseAuthUserCollisionException) {
@@ -105,7 +106,6 @@ class AuthViewModel :ViewModel() {
                         Log.e("AuthViewModel", "Đăng ký thất bại", exception)
                     }
                 }
-
             }
     }
 

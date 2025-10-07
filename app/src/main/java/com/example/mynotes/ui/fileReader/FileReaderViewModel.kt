@@ -29,10 +29,16 @@ class FileReaderViewModel(private val drawingsRepository: DrawingsRepository) : 
     private val _loadedBitmap = MutableStateFlow<Bitmap?>(null)
     val loadedBitmap: StateFlow<Bitmap?> = _loadedBitmap
 
+    private val _selectedIds = MutableStateFlow<Set<Long>>(emptySet())
+    val selectedIds: StateFlow<Set<Long>> = _selectedIds
+
+    private val _isInSelectionMode = MutableStateFlow(false)
+    val isInSelectionMode: StateFlow<Boolean> = _isInSelectionMode
+
     sealed class LoadStatus {
-        object Idle : LoadStatus()
-        object Loading : LoadStatus()
-        object Success : LoadStatus()
+        data object Idle : LoadStatus()
+        data object Loading : LoadStatus()
+        data object Success : LoadStatus()
         data class Error(val message: String) : LoadStatus()
     }
 
@@ -138,5 +144,39 @@ class FileReaderViewModel(private val drawingsRepository: DrawingsRepository) : 
     fun clearSelection() {
         _selectedDrawing.value = null
         _loadedBitmap.value = null
+    }
+    fun startSelection(id: Long) {
+        _isInSelectionMode.value = true
+        _selectedIds.value = setOf(id)
+    }
+
+    fun toggleSelection(id: Long) {
+        _selectedIds.value = _selectedIds.value.toMutableSet().apply {
+            if (contains(id)) remove(id) else add(id)
+        }
+    }
+
+    fun clearSelectionMode() {
+        _isInSelectionMode.value = false
+        _selectedIds.value = emptySet()
+    }
+
+    fun deleteSelectedDrawings() {
+        viewModelScope.launch {
+            try {
+                _selectedIds.value.forEach { id ->
+                    val drawing = drawingsRepository.getDrawingById(id)
+                    drawingsRepository.deleteDrawing(id)
+                    drawing?.let {
+                        val file = File(it.filePath)
+                        if (file.exists()) file.delete()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("FileReaderViewModel", "Failed to delete selected drawings", e)
+            } finally {
+                clearSelectionMode()
+            }
+        }
     }
 }

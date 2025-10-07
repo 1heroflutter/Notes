@@ -32,6 +32,10 @@ class AddViewModel(private val notesRepository: NotesRepository) : ViewModel() {
     suspend fun saveNote() {
         withContext(Dispatchers.IO) {
             if (validateInput()) {
+                if (noteUiState.noteDetail.title.isBlank()) {
+                    val words = noteUiState.noteDetail.context.trim().split("\\s+".toRegex())
+                    noteUiState.noteDetail.title = words.take(3).joinToString(" ")
+                }
                 notesRepository.insertNote(noteUiState.noteDetail.toItem())
                 notesCollection.document(noteUiState.noteDetail.id.toString())
                     .set(noteUiState.noteDetail.toItem())
@@ -39,7 +43,6 @@ class AddViewModel(private val notesRepository: NotesRepository) : ViewModel() {
             }
         }
     }
-
 }
 
 

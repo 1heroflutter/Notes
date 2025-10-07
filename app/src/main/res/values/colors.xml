@@ -8,14 +8,14 @@
     <color name="black">#191919</color>
     <color name="light_text_bg">#E5E8E8</color>
     <color name="bg_black">#000000</color>
-    <color name="white">#FFFFFFFF</color>
+    <color name="white">#fdfdfd</color>
     <color name="bmi_blue">#56a9e8</color>
     <color name="bmi_dark_green">#7cc55c</color>
     <color name="bmi_btn_dark">#b2dba4</color>
     <color name="bmi_btn">#8fbeea</color>
     <color name="text">#f7dc90</color>
-    <color name="light_dialog">#fcddaf</color>
-    <color name="dark_dialog">#e79a76</color>
+    <color name="light_dialog">#e79a76</color>
+    <color name="dark_dialog">#fcddaf</color>
     <color name="radioBtn">#fc3903</color>
     <color name="loginNight">#210D0D0D</color>
     <color name="loginDay">#3DFFFFFF</color>

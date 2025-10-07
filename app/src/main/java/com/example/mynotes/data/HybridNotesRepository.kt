@@ -4,6 +4,7 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
@@ -76,24 +77,22 @@ class HybridNotesRepository(
             return
         }
 
-        withContext(Dispatchers.IO) { // Đảm bảo chạy trên luồng IO tránh lag UI
-            offlineRepo.getAllNotesStream().collect { notes ->
-                notes.forEach { note ->
-                    if (note.userUID.isEmpty()) {
-                        // Nếu note chưa có userUID, gán userUid hiện tại
-                        val updatedNote = note.copy(userUID = userUid)
-                        cloudRepo.updateNote(updatedNote) // Đồng bộ lên Firebase
-                        Log.d("HybridNotesRepo", "Synced note ${note.id} to cloud with user $userUid")
-                    } else if (note.userUID == userUid) {
-                        // Nếu userUID khớp, chỉ cần update lên cloud
-                        cloudRepo.updateNote(note)
-                        Log.d("HybridNotesRepo", "Updated existing note ${note.id} for user $userUid")
-                    } else {
-                        Log.w("HybridNotesRepo", "Skipped note ${note.id}: belongs to another user.")
-                    }
+        withContext(Dispatchers.IO) {
+            val notes = offlineRepo.getAllNotesStream().first() // DỪNG sau khi nhận lần đầu
+            notes.forEach { note ->
+                if (note.userUID.isEmpty()) {
+                    val updatedNote = note.copy(userUID = userUid)
+                    cloudRepo.updateNote(updatedNote)
+                    Log.d("HybridNotesRepo", "Synced note ${note.id} to cloud with user $userUid")
+                } else if (note.userUID == userUid) {
+                    cloudRepo.updateNote(note)
+                    Log.d("HybridNotesRepo", "Updated existing note ${note.id} for user $userUid")
+                } else {
+                    Log.w("HybridNotesRepo", "Skipped note ${note.id}: belongs to another user.")
                 }
             }
         }
     }
+
 
 }

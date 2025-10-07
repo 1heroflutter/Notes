@@ -1,16 +1,24 @@
 package com.example.mynotes.ui.draw
 
+import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color.WHITE
 import android.graphics.Paint
-import android.graphics.Path
 import android.util.Log
-import androidx.compose.ui.geometry.Offset
+import androidx.annotation.RequiresApi
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asAndroidBitmap
+import com.example.mynotes.data.PathData
 import com.example.mynotes.data.drawing.DrawingEntity
 import com.example.mynotes.data.drawing.DrawingsRepository
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,7 +29,6 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.math.sqrt
 
 class DrawingViewModel(private val drawingsRepository: DrawingsRepository) : ViewModel() {
     // Current drawing state
@@ -30,6 +37,9 @@ class DrawingViewModel(private val drawingsRepository: DrawingsRepository) : Vie
     // Current stroke being drawn
     private val _currentStroke = MutableStateFlow<Stroke?>(null)
 
+    private val _backgroundBitmap = MutableStateFlow<Bitmap?>(null)
+    val backgroundBitmap: StateFlow<Bitmap?> = _backgroundBitmap
+
     // Current drawing settings
     private val _strokeColor = MutableStateFlow(Color.Black)
     val strokeColor: StateFlow<Color> = _strokeColor
@@ -37,21 +47,27 @@ class DrawingViewModel(private val drawingsRepository: DrawingsRepository) : Vie
     private val _strokeWidth = MutableStateFlow(5f)
     val strokeWidth: StateFlow<Float> = _strokeWidth
 
-    // Drawing title
-    private val _drawingTitle = MutableStateFlow("")
-    val drawingTitle: StateFlow<String> = _drawingTitle
+    val gson = Gson()
 
+    fun setStrokes(strokes: List<Stroke>) {
+        _drawing.value = _drawing.value.copy(strokes = strokes)
+    }
     // Rest of your existing drawing methods...
 
     fun startStroke(x: Float, y: Float) {
+        val color = if (_isErasing.value) {
+            _drawing.value.backgroundColor
+        } else {
+            _strokeColor.value
+        }
+
         _currentStroke.value = Stroke(
             points = listOf(DrawPoint(x, y)),
-            color = _strokeColor.value,
+            color = color,
             strokeWidth = _strokeWidth.value
         )
     }
 
-    // Add a point to the current stroke
     fun addPointToStroke(x: Float, y: Float, pressure: Float = 1f) {
         _currentStroke.value?.let { currentStroke ->
             val updatedPoints = currentStroke.points + DrawPoint(x, y, pressure)
@@ -59,17 +75,16 @@ class DrawingViewModel(private val drawingsRepository: DrawingsRepository) : Vie
         }
     }
 
-    // Finish the current stroke and add it to the drawing
     fun endStroke() {
         _currentStroke.value?.let { stroke ->
             if (stroke.points.size > 1) {
-                val updatedStrokes = _drawing.value.strokes + stroke
-                _drawing.value = _drawing.value.copy(strokes = updatedStrokes)
+                _drawing.value = _drawing.value.copy(
+                    strokes = _drawing.value.strokes + stroke
+                )
             }
             _currentStroke.value = null
         }
     }
-
     // Change drawing settings
     fun setStrokeColor(color: Color) {
         _strokeColor.value = color
@@ -78,122 +93,103 @@ class DrawingViewModel(private val drawingsRepository: DrawingsRepository) : Vie
     fun setStrokeWidth(width: Float) {
         _strokeWidth.value = width
     }
-    private val _isLoading = MutableStateFlow(false)
-    val isLoading: StateFlow<Boolean> = _isLoading
 
-    // id của file đã cần đọc
-    private var currentDrawingId: Long? = null
-
-    private var currentFilePath: String? = null
     // Clear the drawing
     fun clearDrawing() {
         _drawing.value = Drawing()
     }
-    fun getDrawingAsBitmap(width: Int, height: Int): Bitmap {
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        val canvas = android.graphics.Canvas(bitmap)
+    fun saveCanvasAsBitmap(
+        context: Context,
+        canvasWidth: Int,
+        canvasHeight: Int,
+        originalDrawingId: Long? = null,
+        onSaved: (String) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val resultBitmap = Bitmap.createBitmap(canvasWidth, canvasHeight, Bitmap.Config.ARGB_8888)
+                val canvas = android.graphics.Canvas(resultBitmap)
 
-        // Fill background
-        val paint = Paint()
-        paint.color = _drawing.value.backgroundColor.toArgb()
-        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+                backgroundBitmap.value?.let {
+                    canvas.drawBitmap(it, 0f, 0f, null)
+                } ?: canvas.drawColor(WHITE)
 
-        // Draw all strokes
-        _drawing.value.strokes.forEach { stroke ->
-            if (stroke.points.size > 1) {
-                val path = Path()
-                path.moveTo(stroke.points.first().x, stroke.points.first().y)
+                drawing.value.strokes.forEach { stroke ->
+                    if (stroke.points.size > 1) {
+                        val paint = Paint().apply {
+                            color = stroke.color.toArgb()
+                            strokeWidth = stroke.strokeWidth
+                            style = Paint.Style.STROKE
+                            isAntiAlias = true
+                            strokeCap = Paint.Cap.ROUND
+                            strokeJoin = Paint.Join.ROUND
+                        }
 
-                for (i in 1 until stroke.points.size) {
-                    path.lineTo(stroke.points[i].x, stroke.points[i].y)
+                        val path = android.graphics.Path().apply {
+                            moveTo(stroke.points.first().x, stroke.points.first().y)
+                            for (i in 1 until stroke.points.size) {
+                                lineTo(stroke.points[i].x, stroke.points[i].y)
+                            }
+                        }
+
+                        canvas.drawPath(path, paint)
+                    }
                 }
 
-                paint.color = stroke.color.toArgb()
-                paint.strokeWidth = stroke.strokeWidth
-                paint.style = Paint.Style.STROKE
-                paint.strokeJoin = Paint.Join.ROUND
-                paint.strokeCap = Paint.Cap.ROUND
-
-                canvas.drawPath(path, paint)
-            }
-        }
-
-        return bitmap
-    }
-    // Save drawing
-    fun saveDrawing(bitmap: Bitmap) {
-        viewModelScope.launch {
-            _saveStatus.value = SaveStatus.Success
-
-            try {
-                // Generate file path and name
                 val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
                 val fileName = "drawing_$timestamp.png"
 
-                // Get the app's private storage directory
                 val file = withContext(Dispatchers.IO) {
-                    val storageDir = File(
-                        File(System.getProperty("java.io.tmpdir")),
-                        "drawings"
-                    )
-
-                    // Create directories if needed
-                    if (!storageDir.exists()) {
-                        storageDir.mkdirs()
-                    }
-
+                    val storageDir = File(context.filesDir, "drawings")
+                    if (!storageDir.exists()) storageDir.mkdirs()
                     File(storageDir, fileName)
                 }
 
-                // Save bitmap to file
                 withContext(Dispatchers.IO) {
                     FileOutputStream(file).use { out ->
-                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                        resultBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
                     }
                 }
 
-                // Create drawing entity and save to database
-                val drawing = DrawingEntity(
-                    id = 0, // Auto-generated ID
+                val entity = DrawingEntity(
                     title = "Drawing $timestamp",
                     filePath = file.absolutePath,
                     createdAt = System.currentTimeMillis()
                 )
 
-                val drawingId = withContext(Dispatchers.IO) {
-                    drawingsRepository.insertDrawing(drawing)
+                withContext(Dispatchers.IO) {
+                    drawingsRepository.insertDrawing(entity)
                 }
 
-                Log.d("DrawingViewModel", "Drawing saved with ID: $drawingId")
-                _saveStatus.value = SaveStatus.Success
+                // ✅ Xóa bản cũ nếu có
+                if (originalDrawingId != null) {
+                    withContext(Dispatchers.IO) {
+                        val old = drawingsRepository.getDrawingById(originalDrawingId)
+                        old?.let {
+                            File(it.filePath).delete()
+                            drawingsRepository.deleteDrawing(it.id.toLong())
+                        }
+                    }
+                }
+
+                onSaved(file.absolutePath)
+
             } catch (e: Exception) {
-                Log.e("DrawingViewModel", "Error saving drawing", e)
-                _saveStatus.value = SaveStatus.Error(e.message ?: "Unknown error")
+                onError(e.message ?: "Unknown error")
             }
         }
     }
-    // Load existing drawing
+
     fun loadDrawing(drawingId: Long) {
         viewModelScope.launch {
-            _isLoading.value = true
-
-            try {
-                val drawing = withContext(Dispatchers.IO) {
-                    drawingsRepository.getDrawingById(drawingId)
+            val drawing = drawingsRepository.getDrawingById(drawingId)
+            if (drawing != null) {
+                val file = File(drawing.filePath)
+                if (file.exists()) {
+                    val bitmap = BitmapFactory.decodeFile(drawing.filePath)
+                    _backgroundBitmap.value = bitmap
                 }
-
-                if (drawing != null) {
-                    currentDrawingId = drawing.id.toLong()
-                    currentFilePath = drawing.filePath
-                    _drawingTitle.value = drawing.title
-                    _isLoading.value = false
-                } else {
-                    Log.e("DrawingViewModel", "Drawing not found")
-                    _isLoading.value = false
-                }
-            } catch (e: Exception) {
-                Log.e("DrawingViewModel", "Error loading drawing", e)
-                _isLoading.value = false
             }
         }
     }
@@ -208,94 +204,42 @@ class DrawingViewModel(private val drawingsRepository: DrawingsRepository) : Vie
         data class Error(val message: String) : SaveStatus()
     }
 
-    // Get current user UID - implement based on your auth system
-    private fun getCurrentUserUID(): String {
-        // TODO: Implement based on your authentication system
-        return ""
-    }
-
-    // Data class for drawing paths
-    data class PathData(
-        val path: Path,
-        val color: Color,
-        val strokeWidth: Float
-    )
-
     // Drawing paths
     private val _paths = MutableStateFlow<List<PathData>>(emptyList())
     val paths: StateFlow<List<PathData>> = _paths
-    private var currentPath = Path()
 
     // Stroke color and width settings
+    private var _isErasing = MutableStateFlow(false)
+    val isErasing: StateFlow<Boolean> = _isErasing
 
 
-
-    // Start a new path
-    fun startDrawing(start: Offset) {
-        currentPath = Path().apply {
-            moveTo(start.x, start.y)
-        }
+    fun toggleEraserMode() {
+        _isErasing.value = !_isErasing.value
     }
 
-    // Add a point to the current path
-    fun continueDrawing(point: Offset) {
-        val lastPoint = currentPath.lastLineTo ?: return
-        if ((point - lastPoint).getDistance() > 4) {
-            currentPath.lineTo(point.x, point.y)
-
-            // Update the paths list with the current path
-            val newPaths = _paths.value.toMutableList()
-
-            // Remove the last path (which is our current path) if it exists
-            if (newPaths.isNotEmpty()) {
-                newPaths.removeAt(newPaths.size - 1)
-            }
-
-            // Add the updated current path
-            newPaths.add(
-                PathData(
-                    path = currentPath,
-                    color = _strokeColor.value,
-                    strokeWidth = _strokeWidth.value
-                )
-            )
-
-            _paths.value = newPaths
-        }
+    fun setBackgroundBitmap(bitmap: Bitmap?) {
+        _backgroundBitmap.value = bitmap
     }
 
-    // Finish the current path
-    fun finishDrawing() {
-        if (!currentPath.isEmpty) {
-            val newPaths = _paths.value.toMutableList()
-            newPaths.add(
-                PathData(
-                    path = currentPath,
-                    color = _strokeColor.value,
-                    strokeWidth = _strokeWidth.value
-                )
-            )
-            _paths.value = newPaths
-            currentPath = Path()
+    @RequiresApi(35)
+    fun undoLastStroke() {
+        val strokes = _drawing.value.strokes.toMutableList()
+        if (strokes.isNotEmpty()) {
+            strokes.removeLast()
+            _drawing.value = _drawing.value.copy(strokes = strokes)
         }
     }
 }
-
-val Path.lastLineTo: Offset?
-    get() = this::class.java.getDeclaredField("commands").let { field ->
-        field.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        val commands = field.get(this) as? ArrayList<Any>
-        commands?.lastOrNull()?.let { lastCommand ->
-            val cx = lastCommand::class.java.getDeclaredField("x")
-            val cy = lastCommand::class.java.getDeclaredField("y")
-            cx.isAccessible = true
-            cy.isAccessible = true
-            Offset(cx.getFloat(lastCommand), cy.getFloat(lastCommand))
+fun List<Stroke>.toPathDataList(): List<PathData> {
+    return this.map { stroke ->
+        val path = Path().apply {
+            if (stroke.points.isNotEmpty()) {
+                moveTo(stroke.points.first().x, stroke.points.first().y)
+                stroke.points.drop(1).forEach { point ->
+                    lineTo(point.x, point.y)
+                }
+            }
         }
+        PathData(path, stroke.color, stroke.strokeWidth)
     }
-
-// Extension function to calculate distance between two offsets
-fun Offset.getDistance(other: Offset): Float {
-    return sqrt((this.x - other.x) * (this.x - other.x) + (this.y - other.y) * (this.y - other.y))
 }

@@ -50,7 +50,6 @@ class EditViewModel(
     private val noteId: Int = checkNotNull(savedStateHandle[NoteEditDestination.noteIdArg])
     var isFavourite by mutableIntStateOf(0)
     var isHidden by mutableIntStateOf(0)
-    var fontSize by mutableStateOf(20.sp)
 
     fun updateUiState(noteDetails: NoteDetails) {
         noteUiState =
@@ -95,16 +94,24 @@ class EditViewModel(
         }
     }
 
-    fun hidden() {
+    fun hidden(onDone: (Int) -> Unit) {
         isHidden = if (noteUiState.noteDetail.status != -1) -1 else 0
         val updatedNote = noteUiState.noteDetail.copy(status = isHidden)
 
         updateUiState(updatedNote)
 
         viewModelScope.launch {
-            notesRepository.updateNote(updatedNote.toItem())
+            try {
+                notesRepository.updateNote(updatedNote.toItem())
+                onDone(isHidden)
+            } catch (e: Exception) {
+                onDone(noteUiState.noteDetail.status)
+            }
         }
     }
+
+
+
 
     fun scheduleReminder(reminder: Reminder) {
         notifyRepository.scheduleReminder(

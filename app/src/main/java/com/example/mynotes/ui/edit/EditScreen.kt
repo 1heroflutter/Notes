@@ -68,6 +68,7 @@ import com.example.mynotes.EditTopAppBar
 import com.example.mynotes.data.NoteDetails
 import com.example.mynotes.data.NoteUiState
 import com.example.mynotes.data.Reminder
+import com.example.mynotes.ui.FontSettingsViewModel
 import com.example.mynotes.ui.navigation.NavigationDestination
 import kotlinx.coroutines.launch
 import org.openxmlformats.schemas.drawingml.x2006.main.STTextFontSize
@@ -89,7 +90,7 @@ fun EditScreen(
     modifier: Modifier = Modifier,
     navigateToCover: (Int) -> Unit,
 ) {
-
+    val fontSettingsViewModel: FontSettingsViewModel = viewModel()
     val coroutineScope = rememberCoroutineScope()
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
     val editUiState = viewModel.noteUiState
@@ -111,11 +112,19 @@ fun EditScreen(
                     }
                 },
                 onHidden = {
-                    viewModel.hidden()
-                    coroutineScope.launch {
-                        viewModel.saveNote()
+                    viewModel.hidden { newStatus ->
+                        Toast.makeText(
+                            context,
+                            if (newStatus == -1) "Ghi chú đã được ẩn" else "Ghi chú đã hiển thị",
+                            Toast.LENGTH_SHORT
+                        ).show()
+
+                        coroutineScope.launch {
+                            viewModel.saveNote()
+                        }
                     }
                 },
+
                 showReminderDialog,
                 onShowReminderDialogChange = { showReminderDialog = it },
                 navigateToCover = { id -> navigateToCover(id) },
@@ -136,7 +145,8 @@ fun EditScreen(
                         ).show()
                     }
                 },
-                )
+                fontViewModel = fontSettingsViewModel
+            )
         },
         modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
     ) { contentPadding ->
@@ -152,7 +162,6 @@ fun EditScreen(
                 contentAlignment = Alignment.Center
             ) {
                 TextInp(
-                    modifier = modifier.fillMaxWidth(),
                     noteUiState = editUiState,
                     onValueChange = viewModel::updateUiState,
                     onSave = {
@@ -160,7 +169,7 @@ fun EditScreen(
                             viewModel.saveNote()
                         }
                     },
-                    fontSize =  viewModel.fontSize
+                    fontSize = fontSettingsViewModel.fontSize
                 )
                 if (showReminderDialog) {
                     ReminderDialogContent(
@@ -174,87 +183,87 @@ fun EditScreen(
         }
     }
 }
-
 @Composable
 fun TextInp(
-    modifier: Modifier,
+    modifier: Modifier = Modifier,
     noteUiState: NoteUiState,
     onValueChange: (NoteDetails) -> Unit,
     onSave: () -> Unit,
     fontSize: TextUnit
 ) {
-
     val scrollState = rememberScrollState()
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
-    Box {
-        Column(
-            horizontalAlignment = Alignment.End,
-            modifier = modifier
-                .pointerInput(Unit) {
-                    detectTapGestures(onTap = {
-                        focusManager.clearFocus()
-                        keyboardController?.hide()
-                    })
-                }
-        ) {
-            Box(
-                Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.secondaryContainer)
-            )
 
-            Box(
-                Modifier
-                    .weight(3f)
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.secondaryContainer)
-                    .verticalScroll(scrollState)
-            ) {
-                TextField(
-                    value = noteUiState.noteDetail.context,
-                    onValueChange = { onValueChange(noteUiState.noteDetail.copy(context = it)) },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = MaterialTheme.colorScheme.background,
-                        focusedContainerColor = MaterialTheme.colorScheme.background,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.background,
-                        disabledContainerColor = MaterialTheme.colorScheme.background,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.background
-                    ),
-                    textStyle = TextStyle(
-                        fontSize = fontSize,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    ),
-                    modifier = modifier
-                        .fillMaxWidth()
-                        ,
-                    maxLines = 20
-                )
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = {
+                    focusManager.clearFocus()
+                    keyboardController?.hide()
+                })
             }
+    ) {
+        Spacer(
+            modifier = Modifier.weight(0.5f)
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.secondaryContainer)
+        )
 
-            Box(
-                Modifier
-                    .weight(1f)
+        // SCROLLABLE CONTENT AREA
+        Column(
+            modifier = Modifier
+                .weight(3f)
+                .fillMaxWidth()
+                .verticalScroll(scrollState)
+                .background(MaterialTheme.colorScheme.secondaryContainer)
+        ) {
+            OutlinedTextField(
+                value = noteUiState.noteDetail.context,
+                onValueChange = {
+                    onValueChange(noteUiState.noteDetail.copy(context = it))
+                },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = MaterialTheme.colorScheme.background,
+                    focusedContainerColor = MaterialTheme.colorScheme.background,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.background,
+                    disabledContainerColor = MaterialTheme.colorScheme.background,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.background
+                ),
+                textStyle = TextStyle(
+                    fontSize = fontSize,
+                    color = MaterialTheme.colorScheme.onPrimary
+                ),
+                modifier = Modifier
                     .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.secondaryContainer)
+                    .heightIn(min = 600.dp),
+                maxLines = 28
+            )
+        }
+
+        // SAVE BUTTON
+        Box(
+            modifier = Modifier.weight(0.5f)
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.secondaryContainer)
+        ) {
+            FloatingActionButton(
+                onClick = onSave,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(20.dp)
             ) {
-                FloatingActionButton(
-                    onClick = { onSave() },
-                    Modifier
-                        .align(alignment = Alignment.BottomEnd)
-                        .padding(20.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = "Save",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = "Save",
+                    tint = MaterialTheme.colorScheme.primary
+                )
             }
         }
     }
 }
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -271,14 +280,10 @@ fun ReminderDialogContent(
         mutableStateOf<Long?>(null)
     }
     var selectedHour by rememberSaveable {
-        mutableIntStateOf(
-            Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-        )
+        mutableIntStateOf(Calendar.getInstance().get(Calendar.HOUR_OF_DAY))
     }
     var selectedMinute by rememberSaveable {
-        mutableIntStateOf(
-            Calendar.getInstance().get(Calendar.MINUTE)
-        )
+        mutableIntStateOf(Calendar.getInstance().get(Calendar.MINUTE))
     }
 
     val timePickerState = rememberTimePickerState(
@@ -286,6 +291,8 @@ fun ReminderDialogContent(
         initialMinute = selectedMinute,
         is24Hour = true
     )
+
+    val appContext = LocalContext.current
 
     Box(
         modifier
@@ -311,11 +318,15 @@ fun ReminderDialogContent(
                 onConfirm = {
                     selectedHour = timePickerState.hour
                     selectedMinute = timePickerState.minute
-                    // Gửi Reminder
+
                     selectedDateMillis?.let { millis ->
-                        val selectedDate = millis
-                        val reminder = Reminder(selectedDate, selectedHour, selectedMinute, context)
+                        val reminder = Reminder(millis, selectedHour, selectedMinute, context)
                         onScheduleReminder(reminder)
+                        Toast.makeText(
+                            appContext,
+                            "Đặt nhắc nhở thành công",
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
                     onDialogDismiss()
                 }
@@ -323,6 +334,7 @@ fun ReminderDialogContent(
         }
     }
 }
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -1,6 +1,7 @@
 package com.example.mynotes.ui.navigation
 
 import androidx.activity.ComponentActivity
+import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -18,6 +19,7 @@ import com.example.mynotes.ui.edit.CoverScreen
 import com.example.mynotes.ui.edit.NoteCoverDestination
 import com.example.mynotes.ui.NoteAppTheme
 import com.example.mynotes.ui.addNote.AddScreen
+import com.example.mynotes.ui.changePassword.ChangePasswordScreen
 import com.example.mynotes.ui.draw.DrawingScreen
 import com.example.mynotes.ui.edit.EditScreen
 import com.example.mynotes.ui.edit.EditViewModel
@@ -30,6 +32,7 @@ import com.example.mynotes.ui.search.SearchScreen
 import com.facebook.CallbackManager
 import com.google.android.gms.auth.api.Auth
 
+@RequiresApi(35)
 @Composable
 fun NoteNavHost(
     navController: NavHostController,
@@ -52,18 +55,16 @@ fun NoteNavHost(
                     navigateToSearch = { navController.navigate("SearchScreen") },
                     logout = { authViewModel.signOut() },
                     login = { navController.navigate("AuthScreen") },
-                    navigateToDrawing = { navController.navigate("DrawingScreen") },
-                    navigateToFileReader = { navController.navigate("FileReader") }
+                    navigateToFileReader = { navController.navigate("FileReader") },
+                    navigateToChangePassword = {navController.navigate("ChangePassword")}
                 )
             }
 
         }
         composable(route = "AddScreen") {
             NoteAppTheme {
-                val editViewModel: EditViewModel = viewModel(factory = AppViewModelProvider.Factory)
                 AddScreen(
                     navigateBack = { navController.popBackStack() },
-                    fontSize = editViewModel.fontSize
                 )
             }
         }
@@ -129,7 +130,7 @@ fun NoteNavHost(
                     if (drawingId != null) {
                         navController.navigate("drawing/$drawingId")
                     } else {
-                        navController.navigate("drawing")
+                        navController.navigate("DrawingScreen")
                     }
                 },
                 navigateBack = {
@@ -145,6 +146,15 @@ fun NoteNavHost(
 
             DrawingScreen(
                 drawingId = drawingId,
+                navigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+        composable(
+            "ChangePassword",
+        ) {
+            ChangePasswordScreen(
                 navigateBack = {
                     navController.popBackStack()
                 }
