@@ -4,8 +4,9 @@ A secure, feature-rich notes and drawing application built natively with **Kotli
 
 ## Screenshots
 
-| Home Screen | Edit Screen | Drawing Tool | Notifying |  
-| ![Home](app/src/main/res/drawable/screenshots/home.jpg)![Edit (Light mode)](app/src/main/res/drawable/screenshots/edit.jpg) | ![Drawing Canvas Placeholder](app/src/main/res/drawable/screenshots/drawing.jpg) | ![Notify](app/src/main/res/drawable/screenshots/notify.jpg) |
+| Home Screen | Edit Screen (Light Mode) | Drawing Tool | Notifying |  
+| :---: | :---: | :---: | :---: |
+| ![Home](app/src/main/res/drawable/screenshots/home.jpg) | ![Edit (Light mode)](app/src/main/res/drawable/screenshots/edit.jpg) | ![Drawing Canvas Placeholder](app/src/main/res/drawable/screenshots/drawing.jpg) | ![Notify](app/src/main/res/drawable/screenshots/notify.jpg) |
 
 
 ## ✨ Key Features
