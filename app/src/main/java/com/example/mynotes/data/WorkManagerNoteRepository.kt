@@ -37,7 +37,6 @@ class WorkManagerNoteRepository(context: Context) : NotifyRepository {
         Log.d("WorkManager", "Reminder time (calendar): $calendarFormatted")
         Log.d("WorkManager", "Scheduling reminder: $hour:$minute , Delay: $delayMillis ms")
 
-
         val inputData = Data.Builder()
             .putString("CONTEXT", context)
             .build()
